@@ -26,6 +26,7 @@ Options:
 ```
 
 ```sh
+cargo install --git https://github.com/akirco/vod.git
 curl -o ~/.local/bin/vodx -fsSL https://raw.githubusercontent.com/akirco/vod/refs/heads/master/vodx
 chmod +x ~/.local/bin/vodx
 ```
