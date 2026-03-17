@@ -34,15 +34,15 @@ check_dependencies
 
 # 参数解析
 show_help() {
-    echo "用法: $0 [选项] <搜索关键词>"
+    echo "用法: $(basename $0) [选项] <搜索关键词>"
     echo "选项:"
     echo "  -h, --help     显示此帮助信息"
     echo "  -c, --clear    清除缓存"
     echo "  --no-cache     跳过缓存，直接搜索"
     echo "示例:"
-    echo "  $0 绝命毒师"
-    echo "  $0 -c          # 清除缓存"
-    echo "  $0 --no-cache 电影名"
+    echo "  $(basename $0) 绝命毒师"
+    echo "  $(basename $0) -c          # 清除缓存"
+    echo "  $(basename $0) --no-cache 电影名"
 }
 
 CLEAR_CACHE=false
