@@ -1,9 +1,93 @@
 #!/usr/bin/env bash
 
-KEYWORD="$1"
+# 检查必需的依赖工具
+check_dependencies() {
+    local missing_deps=()
+
+    for cmd in jq fzf mpv base64 md5sum; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            missing_deps+=("$cmd")
+        fi
+    done
+
+    if [ ${#missing_deps[@]} -ne 0 ]; then
+        echo "错误: 缺少必需的依赖工具: ${missing_deps[*]}"
+        echo "请安装缺失的工具后再运行。"
+        exit 1
+    fi
+}
+
+# 统一的fzf选择函数
+select_with_fzf() {
+    local list="$1"
+    local prompt="$2"
+    local height="${3:-100%}"
+    local preview="${4:-}"
+
+    echo "$list" | fzf --delimiter='\t' --with-nth 1 \
+        --height="$height" --reverse --border --cycle \
+        --prompt="$prompt > " \
+        ${preview:+--preview="$preview"}
+}
+
+check_dependencies
+
+# 参数解析
+show_help() {
+    echo "用法: $0 [选项] <搜索关键词>"
+    echo "选项:"
+    echo "  -h, --help     显示此帮助信息"
+    echo "  -c, --clear    清除缓存"
+    echo "  --no-cache     跳过缓存，直接搜索"
+    echo "示例:"
+    echo "  $0 绝命毒师"
+    echo "  $0 -c          # 清除缓存"
+    echo "  $0 --no-cache 电影名"
+}
+
+CLEAR_CACHE=false
+SKIP_CACHE=false
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        -c|--clear)
+            CLEAR_CACHE=true
+            shift
+            ;;
+        --no-cache)
+            SKIP_CACHE=true
+            shift
+            ;;
+        -*)
+            echo "未知选项: $1"
+            show_help
+            exit 1
+            ;;
+        *)
+            KEYWORD="$1"
+            shift
+            ;;
+    esac
+done
+
+# 处理清除缓存选项
+if [ "$CLEAR_CACHE" = true ]; then
+    if [ -d "$CACHE_DIR" ]; then
+        rm -rf "$CACHE_DIR"
+        echo "缓存已清除。"
+    else
+        echo "缓存目录不存在。"
+    fi
+    exit 0
+fi
+
 if [ -z "$KEYWORD" ]; then
-    echo "用法: $0 <搜索关键词>"
-    echo "示例: $0 绝命毒师"
+    echo "错误: 必须提供搜索关键词"
+    show_help
     exit 1
 fi
 
@@ -11,24 +95,45 @@ fi
 CACHE_DIR="$HOME/.cache/vod"
 mkdir -p "$CACHE_DIR"
 
+# 缓存过期时间（24小时）
+CACHE_TTL=$((24 * 3600))
+
 # 计算关键词的 MD5 值作为缓存文件名，防止特殊字符导致路径错误
 KEYWORD_HASH=$(printf '%s' "$KEYWORD" | md5sum | cut -d' ' -f1)
 CACHE_FILE="$CACHE_DIR/${KEYWORD_HASH}.json"
 
-if [ -f "$CACHE_FILE" ]; then
+# 检查缓存是否有效
+is_cache_valid() {
+    local cache_file="$1"
+    if [ ! -f "$cache_file" ]; then
+        return 1
+    fi
+
+    local cache_age=$(( $(date +%s) - $(stat -c %Y "$cache_file" 2>/dev/null || stat -f %m "$cache_file" 2>/dev/null || echo 0) ))
+    if [ "$cache_age" -gt "$CACHE_TTL" ]; then
+        return 1
+    fi
+
+    return 0
+}
+
+if [ "$SKIP_CACHE" = false ] && is_cache_valid "$CACHE_FILE"; then
     echo "正在从缓存加载: $KEYWORD ..."
     JSON_DATA=$(cat "$CACHE_FILE")
 else
     echo "正在搜索: $KEYWORD ..."
     JSON_DATA=$(vod -w "$KEYWORD" -a detail -j)
-    
+
     if [ -z "$JSON_DATA" ]; then
-        echo "未搜索到数据或命令执行失败。"
+        echo "错误: 未搜索到数据或 vod 命令执行失败。"
+        echo "请检查网络连接或确认关键词正确。"
         exit 1
     fi
-    
-    echo "$JSON_DATA" >"$CACHE_FILE"
-    echo "已缓存搜索结果。"
+
+    if [ "$SKIP_CACHE" = false ]; then
+        echo "$JSON_DATA" >"$CACHE_FILE"
+        echo "已缓存搜索结果。"
+    fi
 fi
 
 if [ -z "$JSON_DATA" ]; then
@@ -42,9 +147,12 @@ if [ "$COUNT" -eq 0 ]; then
     exit 1
 fi
 
+echo "找到 $COUNT 个结果"
+
 USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-VOD_LIST=$(echo "$JSON_DATA" | jq -r '.[] | "\(.vod_name) (\(.vod_year)) - \(.vod_remarks)\t\(@base64)"')
+# 预处理视频列表，减少重复计算
+VOD_LIST=$(echo "$JSON_DATA" | jq -r '.[] | "\(.vod_name) (\(.vod_year // "未知")) - \(.vod_remarks)\t\(@base64)"')
 
 PREVIEW_CMD="
 json_obj=\$(echo '{2}' | base64 -d)
@@ -60,18 +168,28 @@ echo \"\"
 echo -e \"\$blurb\" | fold -s -w \$(( FZF_PREVIEW_COLUMNS * 60 / 100 ))
 echo \"\"
 
-# if [ -n \"\$pic_url\" ] && [ \"\$pic_url\" != \"null\" ]; then
-#     curl -s -H \"User-Agent: $USER_AGENT\" \"\$pic_url\" 2>/dev/null | \
-#     chafa -s \"\${FZF_PREVIEW_COLUMNS:-40}x\${FZF_PREVIEW_LINES:-10}\" -
-# else
-#     echo \"[暂无海报]\"
-# fi
+if [ -n "\$pic_url" ] && [ "\$pic_url" != "null" ] && command -v chafa >/dev/null 2>&1; then
+    # 使用缓存图片避免重复下载
+    pic_cache_dir="$CACHE_DIR/pics"
+    mkdir -p "\$pic_cache_dir"
+    pic_filename=\$(printf '%s' "\$pic_url" | md5sum | cut -d' ' -f1)
+    pic_cache_file="\$pic_cache_dir/\$pic_filename.jpg"
+
+    if [ ! -f "\$pic_cache_file" ] || [ \$((\$(date +%s) - \$(stat -c %Y "\$pic_cache_file" 2>/dev/null || echo 0))) -gt 3600 ]; then
+        curl -s -H "User-Agent: $USER_AGENT" --max-time 5 "\$pic_url" -o "\$pic_cache_file" 2>/dev/null
+    fi
+
+    if [ -f "\$pic_cache_file" ] && [ -s "\$pic_cache_file" ]; then
+        chafa -s "\${FZF_PREVIEW_COLUMNS:-40}x\${FZF_PREVIEW_LINES:-10}" "\$pic_cache_file" 2>/dev/null || echo "[图片加载失败]"
+    else
+        echo "[暂无海报]"
+    fi
+else
+    echo "[暂无海报]"
+fi
 "
 
-SELECTED_LINE=$(echo "$VOD_LIST" | fzf --delimiter='\t' --with-nth 1 \
-    --height=100% --reverse --border --cycle \
-    --prompt="VOD > " \
-    --preview="$PREVIEW_CMD")
+SELECTED_LINE=$(select_with_fzf "$VOD_LIST" "VOD" "100%" "$PREVIEW_CMD")
 
 if [ -z "$SELECTED_LINE" ]; then
     echo "已取消选择。"
@@ -91,9 +209,7 @@ fi
 
 EPISODE_LIST=$(echo "$PLAY_URL_STR" | tr '#' '\n' | awk -F'$' '{print $1 "\t" $2}')
 
-SELECTED_EP=$(echo "$EPISODE_LIST" | fzf --delimiter='\t' --with-nth 1 \
-    --height=30% --reverse --border \
-    --prompt="$VOD_NAME > 选择集数 > ")
+SELECTED_EP=$(select_with_fzf "$EPISODE_LIST" "$VOD_NAME > 选择集数" "30%")
 
 if [ -z "$SELECTED_EP" ]; then
     echo "已取消播放。"
