@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-use reqwest::blocking::Client;
+use reqwest::Client;
 use reqwest::header::USER_AGENT;
 use std::sync::LazyLock;
 use std::time::Duration;
@@ -83,7 +83,8 @@ fn build_url(
     Ok(url.to_string())
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     let url = build_url(
@@ -99,8 +100,10 @@ fn main() -> Result<()> {
         .get(&url)
         .header(USER_AGENT, DEFAULT_USER_AGENT)
         .send()
+        .await
         .with_context(|| format!("Failed to send request to {}", url))?
         .text()
+        .await
         .context("Failed to read response body")?;
 
     let wrapper =

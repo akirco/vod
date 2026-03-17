@@ -145,20 +145,32 @@ impl ApiResponseWrapper {
     /// 尝试解析为单个视频
     pub fn try_video_data(&self) -> Option<Video> {
         self.data.as_ref().and_then(|data| {
-            serde_json::from_value::<DataResponse<Video>>(data.clone())
-                .map(|r| r.data)
+            let data_clone = data.clone();
+            // Try direct deserialization first (most common case)
+            serde_json::from_value::<Video>(data_clone)
                 .ok()
-                .or_else(|| serde_json::from_value::<Video>(data.clone()).ok())
+                .or_else(|| {
+                    // Try wrapped in DataResponse if direct fails
+                    serde_json::from_value::<DataResponse<Video>>(data.clone())
+                        .map(|r| r.data)
+                        .ok()
+                })
         })
     }
 
     /// 尝试解析为单个分类
     pub fn try_class_data(&self) -> Option<Class> {
         self.data.as_ref().and_then(|data| {
-            serde_json::from_value::<DataResponse<Class>>(data.clone())
-                .map(|r| r.data)
+            let data_clone = data.clone();
+            // Try direct deserialization first (most common case)
+            serde_json::from_value::<Class>(data_clone)
                 .ok()
-                .or_else(|| serde_json::from_value::<Class>(data.clone()).ok())
+                .or_else(|| {
+                    // Try wrapped in DataResponse if direct fails
+                    serde_json::from_value::<DataResponse<Class>>(data.clone())
+                        .map(|r| r.data)
+                        .ok()
+                })
         })
     }
 }
@@ -171,10 +183,10 @@ pub enum OutputFormat {
 }
 
 /// 输出数据
-#[derive(Debug, Clone)]
-pub enum OutputData {
-    Videos(Vec<Video>),
-    Classes(Vec<Class>),
+#[derive(Debug)]
+pub enum OutputData<'a> {
+    Videos(&'a [Video]),
+    Classes(&'a [Class]),
     Video(Box<Video>),
     Class(Box<Class>),
 }

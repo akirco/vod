@@ -12,28 +12,28 @@ impl Handler {
     }
 
     /// 根据动作类型获取相应的数据
-    pub fn extract_data(wrapper: &ApiResponseWrapper, action: &str) -> OutputData {
+    pub fn extract_data<'a>(wrapper: &'a ApiResponseWrapper, action: &str) -> OutputData<'a> {
         match action {
             "class" => {
                 if let Some(classes) = wrapper.class.as_ref() {
-                    OutputData::Classes(classes.clone())
+                    OutputData::Classes(classes)
                 } else if let Some(class) = wrapper.try_class_data() {
                     OutputData::Class(Box::new(class))
                 } else if let Some(videos) = wrapper.list.as_ref() {
-                    OutputData::Videos(videos.clone())
+                    OutputData::Videos(videos)
                 } else {
-                    OutputData::Classes(Vec::new())
+                    OutputData::Classes(&[])
                 }
             }
             _ => {
                 if let Some(videos) = wrapper.list.as_ref() {
-                    OutputData::Videos(videos.clone())
+                    OutputData::Videos(videos)
                 } else if let Some(video) = wrapper.try_video_data() {
                     OutputData::Video(Box::new(video))
                 } else if let Some(classes) = wrapper.class.as_ref() {
-                    OutputData::Classes(classes.clone())
+                    OutputData::Classes(classes)
                 } else {
-                    OutputData::Videos(Vec::new())
+                    OutputData::Videos(&[])
                 }
             }
         }
@@ -83,13 +83,13 @@ impl Handler {
 
         match data {
             OutputData::Videos(videos) => {
-                for video in &videos {
+                for video in videos {
                     output.push_str(&Self::format_video_tabular(video));
                     output.push('\n');
                 }
             }
             OutputData::Classes(classes) => {
-                for class in &classes {
+                for class in classes {
                     output.push_str(&Self::format_class_tabular(class));
                     output.push('\n');
                 }
