@@ -1,14 +1,17 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
-use reqwest::Url;
 use reqwest::blocking::Client;
 use reqwest::header::USER_AGENT;
+use std::time::Duration;
 
 mod handler;
 mod models;
 
 use handler::*;
 use models::*;
+
+const DEFAULT_USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36";
+const REQUEST_TIMEOUT_SECS: u64 = 30;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -42,45 +45,70 @@ struct Cli {
     json: bool,
 }
 
+fn build_url(
+    base_url: &str,
+    action: &str,
+    t: Option<&str>,
+    pg: &str,
+    wd: Option<&str>,
+    ids: Option<&str>,
+) -> Result<String> {
+    let mut url = reqwest::Url::parse(base_url).context("Failed to parse base URL")?;
+
+    let mut query = vec![];
+    if !action.is_empty() {
+        query.push(("ac", action));
+    }
+    if let Some(t) = t {
+        query.push(("t", t));
+    }
+    query.push(("pg", pg));
+    if let Some(wd) = wd {
+        query.push(("wd", wd));
+    }
+    if let Some(ids) = ids {
+        query.push(("ids", ids));
+    }
+
+    url.query_pairs_mut().extend_pairs(&query);
+
+    Ok(url.to_string())
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // 构建 URL 和参数
-    let mut url_obj = Url::parse(&cli.url)?;
+    let url = build_url(
+        &cli.url,
+        &cli.action,
+        cli.t.as_deref(),
+        &cli.pg,
+        cli.wd.as_deref(),
+        cli.ids.as_deref(),
+    )?;
 
-    {
-        let mut query_pairs = url_obj.query_pairs_mut();
+    let client = Client::builder()
+        .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
+        .build()
+        .context("Failed to create HTTP client")?;
 
-        if !cli.action.is_empty() {
-            query_pairs.append_pair("ac", &cli.action);
-        }
-        if let Some(ref t) = cli.t {
-            query_pairs.append_pair("t", t);
-        }
-        query_pairs.append_pair("pg", &cli.pg);
-        if let Some(ref wd) = cli.wd {
-            query_pairs.append_pair("wd", wd);
-        }
-        if let Some(ref ids) = cli.ids {
-            query_pairs.append_pair("ids", ids);
-        }
-    }
+    let response_text = client
+        .get(&url)
+        .header(USER_AGENT, DEFAULT_USER_AGENT)
+        .send()
+        .with_context(|| format!("Failed to send request to {}", url))?
+        .text()
+        .context("Failed to read response body")?;
 
-    let client = Client::new();
-    let response_text = client.get(url_obj)
-    .header(USER_AGENT, "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
-    .send()?.text()?;
+    let wrapper =
+        Handler::parse_response(&response_text).context("Failed to parse API response")?;
 
-    // 使用新的响应处理器
-    let wrapper = Handler::parse_response(&response_text)?;
     let output_data = Handler::extract_data(&wrapper, &cli.action);
 
     if cli.json {
-        // 输出 JSON 格式
         let json_output = Handler::format_output(output_data, OutputFormat::Json)?;
         println!("{}", json_output);
     } else {
-        // 输出制表符格式
         let tabular_output = Handler::format_output(output_data, OutputFormat::Tabular)?;
         print!("{}", tabular_output);
     }

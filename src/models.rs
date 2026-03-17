@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize, Deserializer};
 use serde::de::{self, Visitor};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::fmt;
 
 /// 将数字或字符串反序列化为字符串
@@ -106,7 +106,6 @@ pub struct DataResponse<T> {
     pub data: T,
 }
 
-
 /// 响应包装器，兼容原有的 JSON 结构
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiResponseWrapper {
@@ -123,37 +122,39 @@ impl ApiResponseWrapper {
         if let Some(videos) = &self.list {
             return Some(videos.clone());
         }
-        
+
         if let Some(data) = &self.data {
             if let Ok(video_list) = serde_json::from_value::<VideoListResponse>(data.clone()) {
                 return Some(video_list.list);
             }
-            if let Ok(data_resp) = serde_json::from_value::<DataResponse<Vec<Video>>>(data.clone()) {
+            if let Ok(data_resp) = serde_json::from_value::<DataResponse<Vec<Video>>>(data.clone())
+            {
                 return Some(data_resp.data);
             }
         }
-        
+
         None
     }
-    
+
     /// 尝试解析为分类列表
     pub fn try_class_list(&self) -> Option<Vec<Class>> {
         if let Some(classes) = &self.class {
             return Some(classes.clone());
         }
-        
+
         if let Some(data) = &self.data {
             if let Ok(class_list) = serde_json::from_value::<ClassListResponse>(data.clone()) {
                 return Some(class_list.class);
             }
-            if let Ok(data_resp) = serde_json::from_value::<DataResponse<Vec<Class>>>(data.clone()) {
+            if let Ok(data_resp) = serde_json::from_value::<DataResponse<Vec<Class>>>(data.clone())
+            {
                 return Some(data_resp.data);
             }
         }
-        
+
         None
     }
-    
+
     /// 尝试解析为单个视频
     pub fn try_video_data(&self) -> Option<Video> {
         if let Some(data) = &self.data {
@@ -164,10 +165,10 @@ impl ApiResponseWrapper {
                 return Some(video);
             }
         }
-        
+
         None
     }
-    
+
     /// 尝试解析为单个分类
     pub fn try_class_data(&self) -> Option<Class> {
         if let Some(data) = &self.data {
@@ -178,7 +179,7 @@ impl ApiResponseWrapper {
                 return Some(class);
             }
         }
-        
+
         None
     }
 }

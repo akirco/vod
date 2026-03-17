@@ -16,25 +16,23 @@ impl Handler {
         match action {
             "class" => {
                 if let Some(classes) = wrapper.try_class_list() {
-                    OutputData::Classes(classes)
+                    OutputData::Classes(classes.to_vec())
                 } else if let Some(class) = wrapper.try_class_data() {
                     OutputData::Class(class)
                 } else if let Some(videos) = wrapper.try_video_list() {
-                    OutputData::Videos(videos)
+                    OutputData::Videos(videos.to_vec())
                 } else {
-                    // 如果没有分类数据，返回空分类列表
                     OutputData::Classes(Vec::new())
                 }
             }
             _ => {
                 if let Some(videos) = wrapper.try_video_list() {
-                    OutputData::Videos(videos)
+                    OutputData::Videos(videos.to_vec())
                 } else if let Some(video) = wrapper.try_video_data() {
                     OutputData::Video(video)
                 } else if let Some(classes) = wrapper.try_class_list() {
-                    OutputData::Classes(classes)
+                    OutputData::Classes(classes.to_vec())
                 } else {
-                    // 如果没有视频数据，返回空视频列表
                     OutputData::Videos(Vec::new())
                 }
             }
@@ -49,64 +47,54 @@ impl Handler {
         }
     }
 
+    fn format_video_tabular(video: &Video) -> String {
+        format!(
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            video.vod_id,
+            video.vod_name,
+            video.type_name,
+            video.vod_time,
+            video.vod_remarks,
+            video.vod_blurb.as_deref().unwrap_or(""),
+            video.vod_play_from,
+            video.vod_pic.as_deref().unwrap_or(""),
+            video.vod_play_url.as_deref().unwrap_or(""),
+            video.vod_actor.as_deref().unwrap_or(""),
+            video.vod_director.as_deref().unwrap_or(""),
+            video.vod_area.as_deref().unwrap_or(""),
+            video.vod_lang.as_deref().unwrap_or(""),
+            video.vod_year.as_deref().unwrap_or("")
+        )
+    }
+
+    fn format_class_tabular(class: &Class) -> String {
+        format!("{}\t{}\t{}", class.type_id, class.type_name, class.type_pid)
+    }
+
     /// 制表符格式输出
     fn format_tabular(data: OutputData) -> Result<String> {
         let mut output = String::new();
 
         match data {
             OutputData::Videos(videos) => {
-                for video in videos {
-                    output.push_str(&format!(
-                        "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
-                        video.vod_id,
-                        video.vod_name,
-                        video.type_name,
-                        video.vod_time,
-                        video.vod_remarks,
-                        video.vod_blurb.as_deref().unwrap_or(""),
-                        video.vod_play_from,
-                        video.vod_pic.as_deref().unwrap_or(""),
-                        video.vod_play_url.as_deref().unwrap_or(""),
-                        video.vod_actor.as_deref().unwrap_or(""),
-                        video.vod_director.as_deref().unwrap_or(""),
-                        video.vod_area.as_deref().unwrap_or(""),
-                        video.vod_lang.as_deref().unwrap_or(""),
-                        video.vod_year.as_deref().unwrap_or("")
-                    ));
+                for video in &videos {
+                    output.push_str(&Self::format_video_tabular(video));
+                    output.push('\n');
                 }
             }
             OutputData::Classes(classes) => {
-                for class in classes {
-                    output.push_str(&format!(
-                        "{}\t{}\t{}\n",
-                        class.type_id, class.type_name, class.type_pid
-                    ));
+                for class in &classes {
+                    output.push_str(&Self::format_class_tabular(class));
+                    output.push('\n');
                 }
             }
             OutputData::Video(video) => {
-                output.push_str(&format!(
-                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
-                    video.vod_id,
-                    video.vod_name,
-                    video.type_name,
-                    video.vod_time,
-                    video.vod_remarks,
-                    video.vod_blurb.as_deref().unwrap_or(""),
-                    video.vod_play_from,
-                    video.vod_pic.as_deref().unwrap_or(""),
-                    video.vod_play_url.as_deref().unwrap_or(""),
-                    video.vod_actor.as_deref().unwrap_or(""),
-                    video.vod_director.as_deref().unwrap_or(""),
-                    video.vod_area.as_deref().unwrap_or(""),
-                    video.vod_lang.as_deref().unwrap_or(""),
-                    video.vod_year.as_deref().unwrap_or("")
-                ));
+                output.push_str(&Self::format_video_tabular(&video));
+                output.push('\n');
             }
             OutputData::Class(class) => {
-                output.push_str(&format!(
-                    "{}\t{}\t{}\n",
-                    class.type_id, class.type_name, class.type_pid
-                ));
+                output.push_str(&Self::format_class_tabular(&class));
+                output.push('\n');
             }
         }
 
