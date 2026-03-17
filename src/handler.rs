@@ -15,23 +15,23 @@ impl Handler {
     pub fn extract_data(wrapper: &ApiResponseWrapper, action: &str) -> OutputData {
         match action {
             "class" => {
-                if let Some(classes) = wrapper.try_class_list() {
-                    OutputData::Classes(classes.to_vec())
+                if let Some(classes) = wrapper.class.as_ref() {
+                    OutputData::Classes(classes.clone())
                 } else if let Some(class) = wrapper.try_class_data() {
-                    OutputData::Class(class)
-                } else if let Some(videos) = wrapper.try_video_list() {
-                    OutputData::Videos(videos.to_vec())
+                    OutputData::Class(Box::new(class))
+                } else if let Some(videos) = wrapper.list.as_ref() {
+                    OutputData::Videos(videos.clone())
                 } else {
                     OutputData::Classes(Vec::new())
                 }
             }
             _ => {
-                if let Some(videos) = wrapper.try_video_list() {
-                    OutputData::Videos(videos.to_vec())
+                if let Some(videos) = wrapper.list.as_ref() {
+                    OutputData::Videos(videos.clone())
                 } else if let Some(video) = wrapper.try_video_data() {
-                    OutputData::Video(video)
-                } else if let Some(classes) = wrapper.try_class_list() {
-                    OutputData::Classes(classes.to_vec())
+                    OutputData::Video(Box::new(video))
+                } else if let Some(classes) = wrapper.class.as_ref() {
+                    OutputData::Classes(classes.clone())
                 } else {
                     OutputData::Videos(Vec::new())
                 }
@@ -73,7 +73,13 @@ impl Handler {
 
     /// 制表符格式输出
     fn format_tabular(data: OutputData) -> Result<String> {
-        let mut output = String::new();
+        let estimated_size = match &data {
+            OutputData::Videos(v) => v.len() * 256,
+            OutputData::Classes(c) => c.len() * 64,
+            OutputData::Video(_) => 256,
+            OutputData::Class(_) => 64,
+        };
+        let mut output = String::with_capacity(estimated_size);
 
         match data {
             OutputData::Videos(videos) => {
@@ -106,10 +112,71 @@ impl Handler {
         let json_data = match data {
             OutputData::Videos(videos) => serde_json::to_value(videos)?,
             OutputData::Classes(classes) => serde_json::to_value(classes)?,
-            OutputData::Video(video) => serde_json::to_value(video)?,
-            OutputData::Class(class) => serde_json::to_value(class)?,
+            OutputData::Video(video) => serde_json::to_value(*video)?,
+            OutputData::Class(class) => serde_json::to_value(*class)?,
         };
 
         Ok(serde_json::to_string_pretty(&json_data)?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_video() -> Video {
+        Video {
+            vod_id: "1".to_string(),
+            vod_name: "Test".to_string(),
+            type_id: "1".to_string(),
+            type_name: "Movie".to_string(),
+            vod_en: None,
+            vod_time: "2024-01-01".to_string(),
+            vod_remarks: "HD".to_string(),
+            vod_blurb: None,
+            vod_play_from: "src".to_string(),
+            vod_pic: None,
+            vod_play_url: None,
+            vod_actor: None,
+            vod_director: None,
+            vod_area: None,
+            vod_lang: None,
+            vod_year: None,
+        }
+    }
+
+    #[test]
+    fn test_parse_response() {
+        let json = r#"{"list": []}"#;
+        let wrapper = Handler::parse_response(json).unwrap();
+        assert!(wrapper.list.is_some());
+    }
+
+    #[test]
+    fn test_extract_data_videos() {
+        let json = r#"{"list": [{"vod_id": "1", "vod_name": "Test", "type_id": "1", "type_name": "Movie", "vod_time": "", "vod_remarks": "", "vod_play_from": ""}]}"#;
+        let wrapper = Handler::parse_response(json).unwrap();
+        let data = Handler::extract_data(&wrapper, "videolist");
+        match data {
+            OutputData::Videos(v) => assert_eq!(v.len(), 1),
+            _ => panic!("Expected Videos"),
+        }
+    }
+
+    #[test]
+    fn test_format_tabular_video() {
+        let video = make_video();
+        let data = OutputData::Video(Box::new(video));
+        let output = Handler::format_output(data, OutputFormat::Tabular).unwrap();
+        assert!(output.starts_with("1\tTest\tMovie"));
+    }
+
+    #[test]
+    fn test_format_json_video() {
+        let video = make_video();
+        let data = OutputData::Video(Box::new(video));
+        let output = Handler::format_output(data, OutputFormat::Json).unwrap();
+        assert!(output.contains("\"vod_id\": \"1\""));
+        assert!(output.contains("\"vod_name\": \"Test\""));
     }
 }

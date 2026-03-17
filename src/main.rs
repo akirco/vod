@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use reqwest::blocking::Client;
 use reqwest::header::USER_AGENT;
+use std::sync::LazyLock;
 use std::time::Duration;
 
 mod handler;
@@ -12,6 +13,13 @@ use models::*;
 
 const DEFAULT_USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36";
 const REQUEST_TIMEOUT_SECS: u64 = 30;
+
+static HTTP_CLIENT: LazyLock<Client> = LazyLock::new(|| {
+    Client::builder()
+        .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
+        .build()
+        .expect("Failed to create HTTP client")
+});
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -87,12 +95,7 @@ fn main() -> Result<()> {
         cli.ids.as_deref(),
     )?;
 
-    let client = Client::builder()
-        .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
-        .build()
-        .context("Failed to create HTTP client")?;
-
-    let response_text = client
+    let response_text = HTTP_CLIENT
         .get(&url)
         .header(USER_AGENT, DEFAULT_USER_AGENT)
         .send()
@@ -102,6 +105,12 @@ fn main() -> Result<()> {
 
     let wrapper =
         Handler::parse_response(&response_text).context("Failed to parse API response")?;
+
+    wrapper.check_error()?;
+
+    if wrapper.is_empty() {
+        eprintln!("Warning: No data returned from API");
+    }
 
     let output_data = Handler::extract_data(&wrapper, &cli.action);
 

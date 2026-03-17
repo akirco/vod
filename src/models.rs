@@ -2,6 +2,20 @@ use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::fmt;
 
+#[derive(Debug, Clone)]
+pub struct ApiError {
+    pub code: i32,
+    pub msg: String,
+}
+
+impl std::fmt::Display for ApiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "API error (code={}): {}", self.code, self.msg)
+    }
+}
+
+impl std::error::Error for ApiError {}
+
 /// 将数字或字符串反序列化为字符串
 fn deserialize_string_from_number_or_string<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
@@ -88,18 +102,6 @@ pub struct Class {
     pub type_pid: String,
 }
 
-/// API 响应列表
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VideoListResponse {
-    pub list: Vec<Video>,
-}
-
-/// API 分类响应
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ClassListResponse {
-    pub class: Vec<Class>,
-}
-
 /// 通用数据响应
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DataResponse<T> {
@@ -117,70 +119,47 @@ pub struct ApiResponseWrapper {
 }
 
 impl ApiResponseWrapper {
-    /// 尝试解析为视频列表
-    pub fn try_video_list(&self) -> Option<Vec<Video>> {
-        if let Some(videos) = &self.list {
-            return Some(videos.clone());
+    /// 检查 API 响应是否包含错误
+    pub fn check_error(&self) -> Result<(), ApiError> {
+        if let Some(code) = self.code
+            && code != 1 && code != 0
+        {
+            return Err(ApiError {
+                code,
+                msg: self
+                    .msg
+                    .clone()
+                    .unwrap_or_else(|| "Unknown error".to_string()),
+            });
         }
-
-        if let Some(data) = &self.data {
-            if let Ok(video_list) = serde_json::from_value::<VideoListResponse>(data.clone()) {
-                return Some(video_list.list);
-            }
-            if let Ok(data_resp) = serde_json::from_value::<DataResponse<Vec<Video>>>(data.clone())
-            {
-                return Some(data_resp.data);
-            }
-        }
-
-        None
+        Ok(())
     }
 
-    /// 尝试解析为分类列表
-    pub fn try_class_list(&self) -> Option<Vec<Class>> {
-        if let Some(classes) = &self.class {
-            return Some(classes.clone());
-        }
-
-        if let Some(data) = &self.data {
-            if let Ok(class_list) = serde_json::from_value::<ClassListResponse>(data.clone()) {
-                return Some(class_list.class);
-            }
-            if let Ok(data_resp) = serde_json::from_value::<DataResponse<Vec<Class>>>(data.clone())
-            {
-                return Some(data_resp.data);
-            }
-        }
-
-        None
+    /// 检查响应是否为空（无数据）
+    pub fn is_empty(&self) -> bool {
+        self.list.as_ref().is_none_or(|v| v.is_empty())
+            && self.class.as_ref().is_none_or(|c| c.is_empty())
+            && self.data.is_none()
     }
 
     /// 尝试解析为单个视频
     pub fn try_video_data(&self) -> Option<Video> {
-        if let Some(data) = &self.data {
-            if let Ok(video) = serde_json::from_value::<DataResponse<Video>>(data.clone()) {
-                return Some(video.data);
-            }
-            if let Ok(video) = serde_json::from_value::<Video>(data.clone()) {
-                return Some(video);
-            }
-        }
-
-        None
+        self.data.as_ref().and_then(|data| {
+            serde_json::from_value::<DataResponse<Video>>(data.clone())
+                .map(|r| r.data)
+                .ok()
+                .or_else(|| serde_json::from_value::<Video>(data.clone()).ok())
+        })
     }
 
     /// 尝试解析为单个分类
     pub fn try_class_data(&self) -> Option<Class> {
-        if let Some(data) = &self.data {
-            if let Ok(class) = serde_json::from_value::<DataResponse<Class>>(data.clone()) {
-                return Some(class.data);
-            }
-            if let Ok(class) = serde_json::from_value::<Class>(data.clone()) {
-                return Some(class);
-            }
-        }
-
-        None
+        self.data.as_ref().and_then(|data| {
+            serde_json::from_value::<DataResponse<Class>>(data.clone())
+                .map(|r| r.data)
+                .ok()
+                .or_else(|| serde_json::from_value::<Class>(data.clone()).ok())
+        })
     }
 }
 
@@ -193,10 +172,75 @@ pub enum OutputFormat {
 
 /// 输出数据
 #[derive(Debug, Clone)]
-#[allow(clippy::large_enum_variant)]
 pub enum OutputData {
     Videos(Vec<Video>),
     Classes(Vec<Class>),
-    Video(Video),
-    Class(Class),
+    Video(Box<Video>),
+    Class(Box<Class>),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_deserialize_video_with_numeric_id() {
+        let json = r#"{
+            "vod_id": 12345,
+            "vod_name": "Test Video",
+            "type_id": 1,
+            "type_name": "Movie",
+            "vod_time": "2024-01-01",
+            "vod_remarks": "HD",
+            "vod_play_from": "source1"
+        }"#;
+        let video: Video = serde_json::from_str(json).unwrap();
+        assert_eq!(video.vod_id, "12345");
+        assert_eq!(video.type_id, "1");
+    }
+
+    #[test]
+    fn test_api_response_wrapper_video_list() {
+        let json = r#"{
+            "list": [
+                {"vod_id": "1", "vod_name": "Video 1", "type_id": "1", "type_name": "Movie", "vod_time": "2024-01-01", "vod_remarks": "HD", "vod_play_from": "src"}
+            ]
+        }"#;
+        let wrapper: ApiResponseWrapper = serde_json::from_str(json).unwrap();
+        assert!(wrapper.list.is_some());
+        assert_eq!(wrapper.list.unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_api_response_error() {
+        let json = r#"{"code": 500, "msg": "Internal error"}"#;
+        let wrapper: ApiResponseWrapper = serde_json::from_str(json).unwrap();
+        let result = wrapper.check_error();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.code, 500);
+        assert_eq!(err.msg, "Internal error");
+    }
+
+    #[test]
+    fn test_api_response_success_code() {
+        let json = r#"{"code": 1, "list": []}"#;
+        let wrapper: ApiResponseWrapper = serde_json::from_str(json).unwrap();
+        assert!(wrapper.check_error().is_ok());
+    }
+
+    #[test]
+    fn test_is_empty() {
+        let json = r#"{}"#;
+        let wrapper: ApiResponseWrapper = serde_json::from_str(json).unwrap();
+        assert!(wrapper.is_empty());
+
+        let json = r#"{"list": []}"#;
+        let wrapper: ApiResponseWrapper = serde_json::from_str(json).unwrap();
+        assert!(wrapper.is_empty());
+
+        let json = r#"{"list": [{"vod_id": "1", "vod_name": "V", "type_id": "1", "type_name": "M", "vod_time": "", "vod_remarks": "", "vod_play_from": ""}]}"#;
+        let wrapper: ApiResponseWrapper = serde_json::from_str(json).unwrap();
+        assert!(!wrapper.is_empty());
+    }
 }
