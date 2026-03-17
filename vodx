@@ -86,7 +86,6 @@ if [ "$CLEAR_CACHE" = true ]; then
 fi
 
 if [ -z "$KEYWORD" ]; then
-    echo "错误: 必须提供搜索关键词"
     show_help
     exit 1
 fi
@@ -176,7 +175,7 @@ if [ -n "\$pic_url" ] && [ "\$pic_url" != "null" ] && command -v chafa >/dev/nul
     pic_cache_file="\$pic_cache_dir/\$pic_filename.jpg"
 
     if [ ! -f "\$pic_cache_file" ] || [ \$((\$(date +%s) - \$(stat -c %Y "\$pic_cache_file" 2>/dev/null || echo 0))) -gt 3600 ]; then
-        curl -s -H "User-Agent: $USER_AGENT" --max-time 5 "\$pic_url" -o "\$pic_cache_file" 2>/dev/null
+        curl -s -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' --max-time 5 "\$pic_url" -o "\$pic_cache_file" 2>/dev/null
     fi
 
     if [ -f "\$pic_cache_file" ] && [ -s "\$pic_cache_file" ]; then
