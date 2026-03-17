@@ -2,6 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 use reqwest::Url;
 use reqwest::blocking::Client;
+use reqwest::header::USER_AGENT;
 
 mod handler;
 mod models;
@@ -66,7 +67,9 @@ fn main() -> Result<()> {
     }
 
     let client = Client::new();
-    let response_text = client.get(url_obj).send()?.text()?;
+    let response_text = client.get(url_obj)
+    .header(USER_AGENT, "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
+    .send()?.text()?;
 
     // 使用新的响应处理器
     let wrapper = Handler::parse_response(&response_text)?;
