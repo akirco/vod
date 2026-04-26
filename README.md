@@ -27,12 +27,11 @@ Options:
 
 ```sh
 cargo install --git https://github.com/akirco/vod.git
-curl -o ~/.local/bin/vodx -fsSL https://raw.githubusercontent.com/akirco/vod/refs/heads/master/
+curl -o ~/.local/bin/vodx -fsSL https://raw.githubusercontent.com/akirco/vod/refs/heads/master/vodx
+
+chmod +x ~/.local/bin/vodx
 
 #设置环境变量 VOD_API_URL=https://360zyzz.com/api.php/provide/vod
-
-vodx
-chmod +x ~/.local/bin/vodx
 ```
 
 ## vodx 使用
