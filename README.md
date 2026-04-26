@@ -8,8 +8,8 @@
 
 详情: ?ac=detail&ids=${id}
 
-```shell
-❯ vod -h
+```sh
+vod -h
 
 Usage: vod [OPTIONS] --url <URL>
 
@@ -27,6 +27,29 @@ Options:
 
 ```sh
 cargo install --git https://github.com/akirco/vod.git
-curl -o ~/.local/bin/vodx -fsSL https://raw.githubusercontent.com/akirco/vod/refs/heads/master/vodx
+curl -o ~/.local/bin/vodx -fsSL https://raw.githubusercontent.com/akirco/vod/refs/heads/master/
+
+#设置环境变量 VOD_API_URL=https://360zyzz.com/api.php/provide/vod
+
+vodx
 chmod +x ~/.local/bin/vodx
 ```
+
+## vodx 使用
+
+```
+vodx
+Usage: vodx [options] <search_keyword>
+Example: vodx 绝命毒师
+
+Options:
+  -f, --force      Force search, ignore cache
+  -c, --clear      Clear cache before search
+  -h, --help       Show this help message
+```
+
+## 注意
+
+- 可多选播放单选播放
+- F8查看播放列表
+- <>键切换上下集
