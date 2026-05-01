@@ -18,16 +18,22 @@ usage() {
 FORCE_SEARCH=false
 CLEAR_CACHE=false
 
+FORCE_SEARCH=false
+CLEAR_CACHE=false
+POSITIONAL=()
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -f|--force) FORCE_SEARCH=true; shift ;;
         -c|--clear) CLEAR_CACHE=true; shift ;;
         -h|--help) usage ;;
-        *) break ;;
+        *) POSITIONAL+=("$1"); shift ;;
     esac
 done
 
-KEYWORD="$1"
+set -- "${POSITIONAL[@]}"
+
+KEYWORD="${POSITIONAL[0]}"
 if [ -z "$KEYWORD" ]; then
     usage
 fi
@@ -57,9 +63,17 @@ mkdir -p "$CACHE_DIR"
 KEYWORD_HASH=$(printf '%s' "$KEYWORD" | md5sum | cut -d' ' -f1)
 CACHE_FILE="$CACHE_DIR/${KEYWORD_HASH}.json"
 
-if [ "$CLEAR_CACHE" = true ] && [ -f "$CACHE_FILE" ]; then
-    rm -f "$CACHE_FILE"
-    echo "Cache cleared for: $KEYWORD"
+if [ "$CLEAR_CACHE" = true ]; then
+    if [ -f "$CACHE_FILE" ]; then
+        rm -f "$CACHE_FILE"
+        echo "Cache cleared for: $KEYWORD"
+    else
+        echo "No cache found for: $KEYWORD"
+    fi
+fi
+
+if [ "$FORCE_SEARCH" = true ]; then
+    echo "Force search mode: ignoring cache"
 fi
 
 if [ -f "$CACHE_FILE" ] && [ "$FORCE_SEARCH" = false ]; then
