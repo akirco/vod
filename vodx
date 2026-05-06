@@ -15,8 +15,7 @@ usage() {
     exit 0
 }
 
-FORCE_SEARCH=false
-CLEAR_CACHE=false
+
 
 FORCE_SEARCH=false
 CLEAR_CACHE=false
