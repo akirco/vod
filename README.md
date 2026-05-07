@@ -1,12 +1,6 @@
-苹果 cms 接口地址：
+## 预览
 
-分类: ?ac=class
-
-列表: ?ac=videolist&t=${t}&pg=${pg}
-
-搜索: ?ac=detail&wd=${wd}
-
-详情: ?ac=detail&ids=${id}
+![](./screenshot.png)
 
 ```sh
 vod -h
@@ -34,7 +28,7 @@ chmod +x ~/.local/bin/vodx
 #设置环境变量 VOD_API_URL=https://360zyzz.com/api.php/provide/vod
 ```
 
-## vodx 使用
+## vodx 使用 (vodx_old)
 
 ```
 vodx

@@ -1,0 +1,188 @@
+#!/usr/bin/env bash
+
+set -e
+
+MPV_OPTS="--hwdec=auto"
+
+usage() {
+    echo "Usage: $(basename "$0") [options] <search_keyword>"
+    echo "Example: $(basename "$0") 绝命毒师"
+    echo ""
+    echo "Options:"
+    echo "  -f, --force      Force search, ignore cache"
+    echo "  -c, --clear      Clear cache before search"
+    echo "  -h, --help       Show this help message"
+    exit 0
+}
+
+FORCE_SEARCH=false
+CLEAR_CACHE=false
+POSITIONAL=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -f|--force) FORCE_SEARCH=true; shift ;;
+        -c|--clear) CLEAR_CACHE=true; shift ;;
+        -h|--help) usage ;;
+        *) POSITIONAL+=("$1"); shift ;;
+    esac
+done
+
+set -- "${POSITIONAL[@]}"
+
+KEYWORD="${POSITIONAL[0]}"
+if [ -z "$KEYWORD" ]; then
+    usage
+fi
+
+check_deps() {
+    local missing=()
+    for cmd in vod jq fzf mpv; do
+        command -v "$cmd" >/dev/null 2>&1 || missing+=("$cmd")
+    done
+    if [ ${#missing[@]} -gt 0 ]; then
+        echo "Error: missing dependencies: ${missing[*]}"
+        exit 1
+    fi
+}
+
+notify() {
+    if command -v notify-send >/dev/null 2>&1; then
+        notify-send "$1" "$2" -u low -t 2000
+    fi
+}
+
+check_deps
+
+CACHE_DIR="$HOME/.cache/vod"
+mkdir -p "$CACHE_DIR"
+
+KEYWORD_HASH=$(printf '%s' "$KEYWORD" | md5sum | cut -d' ' -f1)
+CACHE_FILE="$CACHE_DIR/${KEYWORD_HASH}.json"
+
+if [ "$CLEAR_CACHE" = true ]; then
+    if [ -f "$CACHE_FILE" ]; then
+        rm -f "$CACHE_FILE"
+        echo "Cache cleared for: $KEYWORD"
+    else
+        echo "No cache found for: $KEYWORD"
+    fi
+fi
+
+if [ "$FORCE_SEARCH" = true ]; then
+    echo "Force search mode: ignoring cache"
+fi
+
+if [ -f "$CACHE_FILE" ] && [ "$FORCE_SEARCH" = false ]; then
+    echo "Loading from cache: $KEYWORD ..."
+    notify "VOD" "Loading from cache: $KEYWORD"
+    JSON_DATA=$(cat "$CACHE_FILE")
+else
+    echo "Searching: $KEYWORD ..."
+    notify "VOD" "Searching: $KEYWORD"
+    JSON_DATA=$(vod -w "$KEYWORD" -a detail -j)
+
+    if [ -z "$JSON_DATA" ]; then
+        echo "No results found or command failed."
+        exit 1
+    fi
+
+    echo "$JSON_DATA" >"$CACHE_FILE"
+    echo "Cached search results."
+fi
+
+if [ -z "$JSON_DATA" ]; then
+    echo "Empty data, please check."
+    exit 1
+fi
+
+COUNT=$(echo "$JSON_DATA" | jq '. | length')
+if [ "$COUNT" -eq 0 ]; then
+    echo "No results found."
+    exit 1
+fi
+
+USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+VOD_LIST=$(echo "$JSON_DATA" | jq -r '.[] | "\(.vod_name) (\(.vod_year)) - \(.vod_remarks)\t\(@base64)"')
+
+PREVIEW_CMD="
+json_obj=\$(echo '{2}' | base64 -d)
+pic_url=\$(echo \"\$json_obj\" | jq -r '.vod_pic')
+name=\$(echo \"\$json_obj\" | jq -r '.vod_name')
+blurb=\$(echo \"\$json_obj\" | jq -r '.vod_blurb')
+director=\$(echo \"\$json_obj\" | jq -r '.vod_director')
+
+echo -e \"\033[1;36m\$name\033[0m\"
+echo -e \"\033[1;33m导演:\033[0m \$director\"
+echo -e \"\$blurb\" | fold -s -w \"\${FZF_PREVIEW_COLUMNS}\"
+
+if [ -n \"\$pic_url\" ] && [ \"\$pic_url\" != \"null\" ]; then
+   curl -s -H \"User-Agent: $USER_AGENT\" \"\$pic_url\" | \
+   chafa --size \"x\$((FZF_PREVIEW_LINES * 6 / 10))\" -
+else
+   echo \"[No Poster]\"
+fi
+"
+
+SELECTED_LINE=$(echo "$VOD_LIST" | fzf --delimiter='\t' --with-nth 1 \
+    --height=100% --reverse --border --cycle \
+    --prompt="󰟞 ❯ " \
+    --preview="$PREVIEW_CMD")
+
+if [ -z "$SELECTED_LINE" ]; then
+    echo "Selection cancelled."
+    exit 0
+fi
+
+SELECTED_B64=$(echo "$SELECTED_LINE" | cut -f2)
+VOD_JSON=$(echo "$SELECTED_B64" | base64 -d)
+
+VOD_NAME=$(echo "$VOD_JSON" | jq -r '.vod_name')
+PLAY_URL_STR=$(echo "$VOD_JSON" | jq -r '.vod_play_url')
+
+if [ -z "$PLAY_URL_STR" ] || [ "$PLAY_URL_STR" = "null" ]; then
+    echo "No playback URL available."
+    exit 1
+fi
+
+EPISODE_LIST=$(echo "$PLAY_URL_STR" | tr '#' '\n' | awk -F'$' '{print $1 "\t" $2}')
+
+SELECTED_EP=$(echo "$EPISODE_LIST" | fzf --delimiter='\t' --with-nth 1 \
+    --height=100% --reverse --border --cycle \
+    --prompt="$VOD_NAME ❯ " \
+    --multi)
+
+if [ -z "$SELECTED_EP" ]; then
+    echo "Playback cancelled."
+    exit 0
+fi
+
+PLAYLIST_FILE=$(mktemp /tmp/vod_playlist.XXXXX.m3u)
+echo "#EXTM3U" > "$PLAYLIST_FILE"
+
+SELECTED_COUNT=0
+while IFS=$'\t' read -r ep_name ep_url; do
+    if [ -n "$ep_url" ]; then
+        echo "#EXTINF:-1,$ep_name" >> "$PLAYLIST_FILE"
+        echo "$ep_url" >> "$PLAYLIST_FILE"
+        SELECTED_COUNT=$((SELECTED_COUNT + 1))
+    fi
+done <<< "$SELECTED_EP"
+
+
+if [ $SELECTED_COUNT -eq 0 ]; then
+    echo "No valid URLs selected."
+    rm -f "$PLAYLIST_FILE"
+    exit 1
+fi
+
+if [ $SELECTED_COUNT -eq 1 ]; then
+    echo "Playing: $VOD_NAME"
+    notify "VOD" "Playing: $VOD_NAME"
+else
+    echo "Playing playlist: $VOD_NAME ($SELECTED_COUNT episodes)"
+    notify "VOD" "Playing playlist: $SELECTED_COUNT episodes"
+fi
+
+mpv --title="󰟞 - $VOD_NAME" --playlist="$PLAYLIST_FILE" $MPV_OPTS >/dev/null 2>&1 &
