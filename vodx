@@ -69,7 +69,7 @@ print_header() {
 print_footer() {
     local mode=$(get_mode)
     if [ "$mode" = "search" ]; then
-        echo "按 Esc 返回分类 / 回车播放"
+        echo " esc 返回 / ↵ 播放"
     else
         local page=$(get_page)
         local total=$(wc -l < "$CLASS_FILE" 2>/dev/null || echo 0)
