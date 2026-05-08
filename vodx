@@ -13,11 +13,27 @@ CACHE_DETAIL="$CACHE_DIR/detail"
 CACHE_IMAGE="$CACHE_DIR/image"
 CLASS_FILE="$CACHE_DIR/vodx_classes"
 DEFAULT_CLASS_FILE="$CACHE_DIR/vodx_default_class"
+HISTORY_FILE="$CACHE_DIR/vodx_history"
 
 API_URL="${VOD_API_URL}"
 [ -z "$API_URL" ] && echo "Error: VOD_API_URL not set" && exit 1
 
 mkdir -p "$CACHE_DIR" "$CACHE_LIST" "$CACHE_DETAIL" "$CACHE_IMAGE"
+
+export FZF_DEFAULT_OPTS="$FZF_DEFAULT_OPTS \
+  --color=dark \
+  --color=fg:#d8dee9,fg+:#d8dee9 \
+  --color=hl:#81a1c1,hl+:#81a1c1 \
+  --color=info:#88c0d0,prompt:#81a1c1,pointer:#bf616a \
+  --color=marker:#a3be8c,spinner:#b48ead,header:#88c0d0 \
+  --color=border:#4c566a,label:#81a1c1"
+
+export FZF_DEFAULT_OPTS="$FZF_DEFAULT_OPTS \
+  --pointer='➤' \
+  --marker='◆' \
+  --gutter='│'"
+
+
 
 get_index() { cat "$TYPE_FILE" 2>/dev/null || echo 0; }
 set_index() { echo "$1" > "$TYPE_FILE"; }
@@ -49,7 +65,9 @@ get_class_id() {
 print_header() {
     local mode=$(get_mode)
     if [ "$mode" = "search" ]; then
-        echo " 搜索模式"
+        echo "  搜索模式"
+    elif [ "$mode" = "history" ]; then
+        echo "  历史记录"
     else
         local idx=$(get_index)
         local total=$(wc -l < "$CLASS_FILE" 2>/dev/null || echo 0)
@@ -70,6 +88,8 @@ print_footer() {
     local mode=$(get_mode)
     if [ "$mode" = "search" ]; then
         echo " esc 返回 / ↵ 播放"
+    elif [ "$mode" = "history" ]; then
+        echo " esc 返回 / ↵ 播放"
     else
         local page=$(get_page)
         local total=$(wc -l < "$CLASS_FILE" 2>/dev/null || echo 0)
@@ -86,7 +106,7 @@ cache_file() {
 search_list() {
     local query="$1"
     [ -z "$query" ] && return
-    vod -a detail -w "$query" -j 2>/dev/null | jq -r '.[] | .vod_name + " [" + (.vod_remarks // "") + "]\t" + .vod_id' 2>/dev/null
+    vod -a detail -w "$query" -j 2>/dev/null | jq -r '.[] | .vod_name + " [" + (.vod_remarks // "") + "]\t" + .vod_id + "\t" + (.vod_play_url // "") + "\t" + .vod_pic + "\t" + (.vod_blurb // "") + "\t" + (.vod_director // "") + "\t" + (.vod_actor // "")' 2>/dev/null
 }
 
 generate_list() {
@@ -95,6 +115,11 @@ generate_list() {
 
     local mode=$(get_mode)
     if [ "$mode" = "search" ]; then
+        return
+    fi
+
+    if [ "$mode" = "history" ]; then
+        generate_history_list
         return
     fi
 
@@ -108,7 +133,7 @@ generate_list() {
         vod -a videolist -t "$type_id" -p "$page" -j 2>/dev/null >"$cf"
     fi
 
-    jq -r '.[] | .vod_name + " [" + (.vod_remarks // "") + "]\t" + .vod_id' "$cf" 2>/dev/null
+    jq -r '.[] | .vod_name + " [" + (.vod_remarks // "") + "]\t" + .vod_id + "\t" + (.vod_play_url // "") + "\t" + .vod_pic + "\t" + (.vod_blurb // "") + "\t" + (.vod_director // "") + "\t" + (.vod_actor // "")' "$cf" 2>/dev/null
 }
 
 next_class() {
@@ -163,32 +188,70 @@ toggle_search() {
     fi
 }
 
+toggle_history() {
+    local mode=$(get_mode)
+    if [ "$mode" = "history" ]; then
+        set_mode "class"
+    else
+        set_mode "history"
+    fi
+}
+
+add_history() {
+    local name="$1"
+    local id="$2"
+    local play_url="$3"
+    local pic="$4"
+    local blurb="$5"
+    local director="$6"
+    local actor="$7"
+    local timestamp=$(date +%Y-%m-%d\ %H:%M)
+    local line="$timestamp	$name	$id	$play_url	$pic	$blurb	$director	$actor"
+    if [ -f "$HISTORY_FILE" ]; then
+        if ! grep -q "^.*	$id	" "$HISTORY_FILE"; then
+            echo "$line" | cat - "$HISTORY_FILE" > "${HISTORY_FILE}.tmp"
+            mv "${HISTORY_FILE}.tmp" "$HISTORY_FILE"
+        fi
+    else
+        echo "$line" > "$HISTORY_FILE"
+    fi
+}
+
+get_history() {
+    if [ -f "$HISTORY_FILE" ]; then
+        cat "$HISTORY_FILE" | head -50
+    fi
+}
+
+generate_history_list() {
+    local mode=$(get_mode)
+    [ "$mode" != "history" ] && return
+    get_history | while IFS='	' read -r timestamp name id play_url pic blurb director actor; do
+        echo "$name [$timestamp]	$id	$play_url	$pic	$blurb	$director	$actor"
+    done
+}
+
 preview_item() {
-    local id="$1"
+    local line="$1"
+    local id=$(echo "$line" | cut -f2)
+    local play_url=$(echo "$line" | cut -f3)
+    local pic=$(echo "$line" | cut -f4)
+    local blurb=$(echo "$line" | cut -f5)
+    local actor=$(echo "$line" | cut -f7)
+    local name=$(echo "$line" | cut -f1 | sed 's/ \[.*\]//')
+
     [ -z "$id" ] && return
 
-    local DETAIL_CACHE="$CACHE_DETAIL/${id}.json"
     local IMAGE_CACHE="$CACHE_IMAGE/${id}.jpg"
 
     local USER_AGENT="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
 
-    if [ -f "$DETAIL_CACHE" ]; then
-        local json=$(cat "$DETAIL_CACHE")
-    else
-        local json=$(vod -i "$id" -a detail -j 2>/dev/null)
-        echo "$json" > "$DETAIL_CACHE"
-    fi
-
-    local name=$(echo "$json" | jq -r '.[0].vod_name // ""')
-    local pic=$(echo "$json" | jq -r '.[0].vod_pic // ""')
-    local blurb=$(echo "$json" | jq -r '.[0].vod_blurb // ""')
-    local director=$(echo "$json" | jq -r '.[0].vod_director // ""')
-    local actor=$(echo "$json" | jq -r '.[0].vod_actor // ""')
-
-    echo -e "\033[1;36m$name\033[0m"
-    echo -e "\033[1;33m导演:\033[0m $director"
-    echo "$blurb" | fold -s -w "${FZF_PREVIEW_COLUMNS:-80}"
-    echo "演员: $actor"
+    local title_len=${#name}
+    local cols=${FZF_PREVIEW_COLUMNS:-80}
+    local pad=$(( (cols - title_len - 4) / 2 ))
+    printf "%${pad}s%s%${pad}s\n" "" "$name" ""
+    echo "$blurb" | fold -s -w "${cols}" | head -3
+    echo -e "\033[1;33m演员:\033[0m $actor" | head -1
 
     if [ -n "$pic" ] && [ "$pic" != "null" ]; then
         local pw=$((FZF_PREVIEW_COLUMNS * 40 / 100))
@@ -205,12 +268,15 @@ preview_item() {
 }
 
 choose_item() {
-    local id="$1"
+    local line="$1"
+    local id=$(echo "$line" | cut -f2)
+    local play_url=$(echo "$line" | cut -f3)
+    local pic=$(echo "$line" | cut -f4)
+    local blurb=$(echo "$line" | cut -f5)
+    local director=$(echo "$line" | cut -f6)
+    local actor=$(echo "$line" | cut -f7)
+    local name=$(echo "$line" | cut -f1 | sed 's/ \[.*\]//')
     [ -z "$id" ] && return
-
-    local json=$(vod -i "$id" -a detail -j 2>/dev/null)
-    local play_url=$(echo "$json" | jq -r '.[0].vod_play_url // ""')
-    local name=$(echo "$json" | jq -r '.[0].vod_name // ""')
 
     if [ -z "$play_url" ] || [ "$play_url" = "null" ]; then
         echo "No playback URL"
@@ -219,7 +285,10 @@ choose_item() {
 
     local episodes=$(echo "$play_url" | tr '#' '\n' | awk -F'$' '{print $1}')
 
-    local selected=$(echo "$episodes" | fzf --prompt "❯ " --reverse --height=100% --border --preview="$SCRIPT preview $id" --preview-window="left:50%:wrap" --multi --bind "ctrl-a:select-all")
+    local IMAGE_CACHE="$CACHE_IMAGE/${id}.jpg"
+    local USER_AGENT="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
+    local ph=$((FZF_PREVIEW_LINES * 8 / 10))
+    local selected=$(echo "$episodes" | fzf --prompt "$name ❯ " --reverse --height=100% --border --preview-window="left:45%:wrap" --preview "$SCRIPT preview '$line'" --multi --bind "ctrl-a:select-all" --bind "esc:execute(exec $SCRIPT)" --bind "?:change-preview-window:left|right" --bind "ctrl-/:change-preview-window:hidden|left")
 
     if [ -z "$selected" ]; then
         return
@@ -254,6 +323,8 @@ start_mpv
 local first_ep=$(echo "$selected" | head -1)
 local title="$name - $first_ep"
 
+$SCRIPT add_history "$name" "$id" "$play_url" "$pic" "$blurb" "$director" "$actor"
+
 ipc_send "{\"command\": [\"set\", \"title\", \"$title\"]}"
 ipc_send "{\"command\": [\"loadlist\", \"$playlist\", \"replace\"]}"
 
@@ -269,10 +340,14 @@ case "$action" in
     page_next) next_page ;;
     page_prev) prev_page ;;
     toggle_search) toggle_search ;;
+    toggle_history) toggle_history ;;
+    add_history) add_history "$2" "$3" "$4" "$5" "$6" "$7" "$8" ;;
+    get_history) get_history ;;
     reload) reload ;;
     set_default) set_default_class ;;
     clear_default) clear_default_class ;;
     get-cmd) generate_list ;;
+    get-history) generate_history_list ;;
     search) search_list "$2" ;;
     header) print_header ;;
     footer) print_footer ;;
@@ -293,9 +368,12 @@ case "$action" in
         fzf --style full \
             --prompt '󰟞 ❯ ' \
             --reverse \
+            --pointer='' \
             --header "$(print_header)" \
             --footer "$(print_footer)" \
+            --preview-label="详情" \
             --bind "start:reload($SCRIPT get-cmd)" \
+            --bind "ctrl-h:execute-silent($SCRIPT toggle_history)+reload($SCRIPT get-cmd)+transform-header($SCRIPT header)+transform-footer($SCRIPT footer)" \
             --bind "tab:execute-silent($SCRIPT next)+reload($SCRIPT get-cmd)+transform-header($SCRIPT header)+transform-footer($SCRIPT footer)" \
             --bind "shift-tab:execute-silent($SCRIPT prev)+reload($SCRIPT get-cmd)+transform-header($SCRIPT header)+transform-footer($SCRIPT footer)" \
             --bind "ctrl-n:execute-silent($SCRIPT page_next)+reload($SCRIPT get-cmd)+transform-footer($SCRIPT footer)" \
@@ -304,13 +382,15 @@ case "$action" in
             --bind "ctrl-d:execute-silent($SCRIPT set_default)" \
             --bind "ctrl-\:execute-silent($SCRIPT clear_default)" \
             --bind "?:change-preview-window:left|right" \
+            --bind "ctrl-/:change-preview-window:hidden|left" \
             --bind "/:execute-silent($SCRIPT toggle_search)+transform-header($SCRIPT header)+transform-footer($SCRIPT footer)+change-prompt( ❯ )" \
             --bind "esc:execute-silent($SCRIPT toggle_search)+transform-header($SCRIPT header)+transform-footer($SCRIPT footer)+change-prompt(󰟞 ❯ )+reload($SCRIPT get-cmd)" \
             --bind "change:reload($SCRIPT search {q})" \
-            --bind "enter:become($SCRIPT choose {2})" \
+            --bind "enter:become($SCRIPT choose {})" \
             --delimiter='	' \
             --with-nth=1 \
             --preview-window="left:45%:wrap" \
-            --preview="$SCRIPT preview {2}"
+            --preview-window="left:45%:wrap" \
+            --preview="$SCRIPT preview {}"
     ;;
 esac
