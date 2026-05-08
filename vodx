@@ -418,7 +418,13 @@ case "$action" in
     clear_default) clear_default_class ;;
     get-cmd) generate_list ;;
     get-history) generate_history_list ;;
-    search) search_list "$2" ;;
+    search)
+        if [ "$(get_mode)" = "search" ]; then
+            search_list "$2"
+        else
+            generate_list
+        fi
+    ;;
     header) print_header ;;
     footer) print_footer ;;
     preview) preview_item "$2" ;;
