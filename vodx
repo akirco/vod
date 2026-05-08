@@ -35,6 +35,75 @@ export FZF_DEFAULT_OPTS="$FZF_DEFAULT_OPTS \
 
 
 
+ansi_art_lines=(
+    "                                [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m            "
+    "[38;2;153;255;255m█[0m[38;2;153;255;255m█[0m      [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m    [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m[38;2;153;255;255m█[0m[38;2;153;255;255m█[0m[38;2;153;255;255m█[0m[38;2;153;255;255m█[0m            [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m  [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m      [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m"
+    "[38;2;153;255;255m█[0m[38;2;153;255;255m█[0m      [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m  [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m      [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m    [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m[38;2;153;255;255m█[0m[38;2;153;255;255m█[0m[38;2;153;255;255m█[0m[38;2;153;255;255m█[0m[38;2;153;255;255m█[0m[38;2;153;255;255m█[0m    [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m  [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m  "
+    "[38;2;153;255;255m█[0m[38;2;153;255;255m█[0m      [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m  [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m      [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m  [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m      [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m      [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m    "
+    "  [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m  [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m    [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m      [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m  [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m      [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m    [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m  [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m  "
+    "    [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m        [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m[38;2;153;255;255m█[0m[38;2;153;255;255m█[0m[38;2;153;255;255m█[0m[38;2;153;255;255m█[0m      [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m[38;2;153;255;255m█[0m[38;2;153;255;255m█[0m[38;2;153;255;255m█[0m[38;2;153;255;255m█[0m[38;2;153;255;255m█[0m[38;2;153;255;255m█[0m  [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m      [38;2;153;255;255m█[0m[38;2;153;255;255m█[0m"
+)
+
+get_term_size() {
+    if [[ -n "$LINES" && -n "$COLUMNS" ]]; then
+        term_rows=$LINES
+        term_cols=$COLUMNS
+    else
+        term_rows=$(tput lines 2>/dev/null)
+        term_cols=$(tput cols 2>/dev/null)
+    fi
+    term_rows=${term_rows:-24}
+    term_cols=${term_cols:-80}
+}
+
+strip_ansi() {
+    sed 's/\x1b\[[0-9;]*[a-zA-Z]//g' <<< "$1"
+}
+
+splash_screen() {
+    get_term_size
+    hidden_cursor
+    local art_height=${#ansi_art_lines[@]}
+
+    local art_width=0
+    for line in "${ansi_art_lines[@]}"; do
+        local stripped
+        stripped=$(strip_ansi "$line")
+        local len=${#stripped}
+        if (( len > art_width )); then
+            art_width=$len
+        fi
+    done
+
+    local top_padding=$(( (term_rows - art_height) / 2 ))
+    (( top_padding < 0 )) && top_padding=0
+
+    local left_padding=$(( (term_cols - art_width) / 2 ))
+    (( left_padding < 0 )) && left_padding=0
+
+    clear
+    for (( i=0; i<top_padding; i++ )); do
+        echo ""
+    done
+    for line in "${ansi_art_lines[@]}"; do
+        printf "%*s" $left_padding ""
+        echo -e "$line"
+    done
+
+    echo ""
+    sleep 0.3
+    clear
+}
+
+hidden_cursor() {
+    echo -ne "\e[?25l"
+}
+restore_cursor(){
+    echo -ne "\e[?25h"
+}
+
+
+
 get_index() { cat "$TYPE_FILE" 2>/dev/null || echo 0; }
 set_index() { echo "$1" > "$TYPE_FILE"; }
 get_page() { cat "$PAGE_FILE" 2>/dev/null || echo 1; }
@@ -330,6 +399,7 @@ ipc_send "{\"command\": [\"loadlist\", \"$playlist\", \"replace\"]}"
 
 rm -f "$playlist"
 set_mode "class"
+
 exec "$SCRIPT"
 }
 
@@ -355,6 +425,7 @@ case "$action" in
     choose) choose_item "$2" ;;
     *)
         check_deps
+        splash_screen
         fetch_classes
         [ ! -s "$CLASS_FILE" ] && { echo "Error: no classes found"; exit 1; }
         [ ! -f "$TYPE_FILE" ] && echo 0 > "$TYPE_FILE"
@@ -365,6 +436,7 @@ case "$action" in
         [ ! -f "$MODE_FILE" ] && echo "class" > "$MODE_FILE"
 
         export SCRIPT TYPE_FILE PAGE_FILE CLASS_FILE CACHE_DIR MODE_FILE
+        restore_cursor
         fzf --style full \
             --prompt '󰟞 ❯ ' \
             --reverse \
