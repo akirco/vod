@@ -368,10 +368,8 @@ case "$action" in
         fzf --style full \
             --prompt '󰟞 ❯ ' \
             --reverse \
-            --pointer='' \
             --header "$(print_header)" \
             --footer "$(print_footer)" \
-            --preview-label="详情" \
             --bind "start:reload($SCRIPT get-cmd)" \
             --bind "ctrl-h:execute-silent($SCRIPT toggle_history)+reload($SCRIPT get-cmd)+transform-header($SCRIPT header)+transform-footer($SCRIPT footer)" \
             --bind "tab:execute-silent($SCRIPT next)+reload($SCRIPT get-cmd)+transform-header($SCRIPT header)+transform-footer($SCRIPT footer)" \
