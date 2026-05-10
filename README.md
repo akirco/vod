@@ -19,6 +19,8 @@ Options:
   -V, --version          Print version
 ```
 
+## 安装（vodx）
+
 ```sh
 cargo install --git https://github.com/akirco/vod.git
 curl -o ~/.local/bin/vodx -fsSL https://raw.githubusercontent.com/akirco/vod/refs/heads/master/vodx
@@ -41,8 +43,37 @@ Options:
   -h, --help       Show this help message
 ```
 
+### fzf 快捷键（vodx）
+
+| 按键        | 功能             |
+| ----------- | ---------------- |
+| `Tab`       | 下一个分类       |
+| `Shift-Tab` | 上一个分类       |
+| `Ctrl-n`    | 下一页           |
+| `Ctrl-p`    | 上一页           |
+| `Ctrl-r`    | 刷新缓存         |
+| `Ctrl-d`    | 设为默认分类     |
+| `Ctrl-\`    | 清除默认分类     |
+| `Ctrl-h`    | 切换历史记录     |
+| `/`         | 搜索             |
+| `Esc`       | 返回             |
+| `?`         | 切换预览窗口位置 |
+| `Ctrl-/`    | 隐藏/显示预览    |
+| `Enter`     | 播放             |
+
+### 播放选集快捷键 (mpv)
+
+| 按键               | 功能         |
+| ------------------ | ------------ |
+| `Enter`            | 确认/播放    |
+| `↑/↓` 或 `j/k`     | 上/下移动    |
+| `←/→` 或 `<` / `>` | 切换上/下集  |
+| `q` 或 `Esc`       | 退出         |
+| `F8`               | 查看播放列表 |
+| `f`                | 全屏         |
+| `Space`            | 暂停/播放    |
+| `Ctrl-a`           | 全选剧集     |
+
 ## 注意
 
 - 可多选播放单选播放
-- F8查看播放列表
-- <>键切换上下集
