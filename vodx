@@ -378,7 +378,7 @@ choose_item() {
 
     start_mpv() {
     if ! pgrep -x "mpv" > /dev/null 2>&1; then
-        mpv --idle=yes --input-ipc-server="$MPV_SOCKET" >/dev/null 2>&1 &
+        nohub mpv --idle=yes --input-ipc-server="$MPV_SOCKET" >/dev/null 2>&1 &
         sleep 0.5
     fi
 }
